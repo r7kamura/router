@@ -1,6 +1,7 @@
 package router
 
 import (
+	. "github.com/r7kamura/gospel"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,7 @@ type routeTestExample struct {
 	match bool
 }
 
-func TestRouteMatch(t *testing.T) {
+func TestRoute(t *testing.T) {
 	examples := []routeTestExample{
 		{"/:a", "/", false},
 		{"/:a", "/a", true},
@@ -32,15 +33,19 @@ func TestRouteMatch(t *testing.T) {
 		{"/a/:b/c", "/a/b/c", true},
 		{"/a/:b/c", "/a/b/c/d", false},
 	}
-	for _, example := range examples {
-		if NewRoute(example.pattern, emptyHandler).Match(example.path) != example.match {
+	Describe(t, "router.Route#Match", func(context Context, it It) {
+		for _, example := range examples {
+			var verb string
 			if example.match {
-				t.Errorf("%s should match %s", example.pattern, example.path)
+				verb = " matches "
 			} else {
-				t.Errorf("%s should not match %s", example.pattern, example.path)
+				verb = " does not match "
 			}
+			it(example.pattern + verb + example.path, func(expect Expect) {
+				expect(NewRoute(example.pattern, dummyHandler).Match(example.path)).ToEqual(example.match)
+			})
 		}
-	}
+	})
 }
 
 // Utility function to create an instance GET request.
@@ -61,134 +66,107 @@ func request(router http.Handler, method, path string) *httptest.ResponseRecorde
 	return recorder
 }
 
-// Utility function to create a http.Handler object from a callback function.
-func handler(callback func()) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		callback()
-	})
-}
-
 // Utility object as empty http.Handler
-var emptyHandler http.Handler = handler(func() {})
+var dummyHandler http.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	fmt.Fprintf(writer, request.URL.Path + "?" + request.URL.RawQuery)
+})
 
-func TestRouterDoesNotMatchUnrelatedPath(t *testing.T) {
-	router := NewRouter()
-	router.Get("/error", emptyHandler)
-	if get(router, "/a").Code != 404 {
-		t.Error("Router should not match unrelated path")
-	}
-}
+func TestRouter(t *testing.T) {
+	Describe(t, "router.Router", func(context Context, it It) {
+		router := NewRouter()
+		router.Get("/a", dummyHandler)
+		router.Get("/:any", dummyHandler)
+		router.Get("/b", dummyHandler)
+		router.Any("/c/d", dummyHandler)
 
-func TestRouterCallsDefaultNotFoundHandler(t *testing.T) {
-	router := NewRouter()
-	response := get(router, "/a")
-	if response.Code != 404 || response.Body.String() != "Not Found\n" {
-		t.Error("Router should return 404 in non-matched case")
-	}
-}
+		context("with unrelated path request", func() {
+			it("does not match & return default 404 response", func(expect Expect) {
+				response := get(router, "/a/b/c")
+				expect(response.Code).ToEqual(404)
+				expect(response.Body.String()).ToEqual("Not Found\n")
+			})
+		})
 
-func TestRouterCallsCustomNotFoundHandler(t *testing.T) {
-	router := NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		http.Error(writer, "Custom NotFoundHandler", 403)
+		context("with custom 404 handler", func() {
+			customNotFoundRouter := NewRouter()
+			customNotFoundRouter.NotFoundHandler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				http.Error(writer, "Custom NotFoundHandler", 403)
+			})
+			it("returns custom response", func(expect Expect) {
+				expect(get(customNotFoundRouter, "/404").Code).ToEqual(403)
+			})
+		})
+
+		context("with unrelated method request", func() {
+			it("does not match", func(expect Expect) {
+				expect(post(router, "/a").Code).ToEqual(404)
+			})
+		})
+
+		context("with related method request", func() {
+			it("does not match", func(expect Expect) {
+				expect(get(router, "/a").Code).ToEqual(200)
+			})
+		})
+
+		context("with 2 related pattern", func() {
+			it("matches the first", func(expect Expect) {
+				expect(get(router, "/a").Body.String()).ToEqual("/a?")
+			})
+		})
+
+		context("with path params pattern", func() {
+			it("addes query string with path params", func(expect Expect) {
+				expect(get(router, "/c").Body.String()).ToEqual("/c?any=c")
+			})
+		})
+
+		context("with duplicated params", func() {
+			it("merged query string with path params", func(expect Expect) {
+				expect(get(router, "/c?any=d").Body.String()).ToEqual("/c?any=d&any=c")
+			})
+		})
+
+		context("with Any route", func() {
+			it("matches any method", func(expect Expect) {
+				expect(get(router, "/c/d").Code).ToEqual(200)
+				expect(post(router, "/c/d").Code).ToEqual(200)
+			})
+		})
+
+		context("with host route", func() {
+			hostRouter := NewRouter()
+			hostRouter.Host("example.com")
+			hostRouter.Get("/a", dummyHandler)
+			it("matches related host", func(expect Expect) {
+				expect(get(hostRouter, "/a").Code).ToEqual(404)
+				expect(get(hostRouter, "http://example.com/a").Code).ToEqual(200)
+			})
+		})
+
+		context("with many host routes", func() {
+			mainRouter := NewRouter()
+			mainRouter.Get("/a", dummyHandler)
+			apiRouter := NewRouter()
+			apiRouter.Host("api.example.com")
+			apiRouter.Get("/b", dummyHandler)
+			apiRouter.NotFoundHandler = mainRouter
+			it("matches related host", func(expect Expect) {
+				expect(get(apiRouter, "/a").Code).ToEqual(200)
+				expect(get(apiRouter, "/b").Code).ToEqual(404)
+				expect(get(apiRouter, "http://api.example.com/a").Code).ToEqual(200)
+				expect(get(apiRouter, "http://api.example.com/b").Code).ToEqual(200)
+			})
+		})
+
+		context("with Handle handler", func() {
+			anyRouter := NewRouter()
+			anyRouter.Handle(dummyHandler)
+			it("matches any request", func(expect Expect) {
+				expect(get(anyRouter, "/a").Code).ToEqual(200)
+				expect(get(anyRouter, "/b").Code).ToEqual(200)
+				expect(post(anyRouter, "/b").Code).ToEqual(200)
+			})
+		})
 	})
-	if get(router, "/a").Code != 403 {
-		t.Error("Router should use custom NotFoundHandler")
-	}
-}
-
-
-func TestRouterDoesNotMatchUnrelatedMethod(t *testing.T) {
-	router := NewRouter()
-	router.Post("/a", handler(func() {
-		t.Error("Router should not match unrelated method")
-	}))
-	router.Get("/a", emptyHandler)
-	get(router, "/a")
-}
-
-func TestRouterMatchesRelatedRoute(t *testing.T) {
-	router := NewRouter()
-	router.Get("/a", emptyHandler)
-	if get(router, "/a").Code != 200 {
-		t.Error("Router should match related route")
-	}
-}
-
-func TestRouterMatchesFirstDefinedRoute(t *testing.T) {
-	router := NewRouter()
-	router.Get("/:any", emptyHandler)
-	router.Get("/:a", handler(func() {
-		t.Error("Router should match first defined route")
-	}))
-	get(router, "/a")
-}
-
-func TestRouterAddsQueryStringWithPathParams(t *testing.T) {
-	router := NewRouter()
-	router.Get("/a/:b", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		fmt.Fprint(writer, request.URL.RawQuery)
-	}))
-	if get(router, "/a/b").Body.String() != "b=b" {
-		t.Error("Router should add query string with path params")
-	}
-}
-
-func TestRouterExtendsQueryStringWithPathParams(t *testing.T) {
-	router := NewRouter()
-	router.Get("/a/:b", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		fmt.Fprint(writer, request.URL.RawQuery)
-	}))
-	if get(router, "/a/b?b=c").Body.String() != "b=c&b=b" {
-		t.Error("Router should extend query string with path params")
-	}
-}
-
-func TestRouterMatchesAnyMethod(t *testing.T) {
-	router := NewRouter()
-	router.Any("/a", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		fmt.Fprint(writer, request.Method)
-	}))
-	if get(router, "/a").Body.String() != "GET" {
-		t.Error("Router#Any should match GET /a")
-	}
-	if post(router, "/a").Body.String() != "POST" {
-		t.Error("Router#Any should match POST /a")
-	}
-	if get(router, "/b").Body.String() != "Not Found\n" {
-		t.Error("Router#Any should not match GET /b")
-	}
-}
-
-func TestRouterMatchesOnlyRelatedHost(t *testing.T) {
-	router := NewRouter()
-	router.Get("/a", emptyHandler)
-	router.Host("example.com")
-	if get(router, "/a").Code != 404 {
-		t.Error("Router should not match unrelated host")
-	}
-	if get(router, "http://example.com/a").Code != 200 {
-		t.Error("Router should match related host")
-	}
-}
-
-func TestRouterMatchesManyHosts(t *testing.T) {
-	mainRouter := NewRouter()
-	mainRouter.Get("/b", emptyHandler)
-	apiRouter := NewRouter()
-	apiRouter.Host("api.example.com")
-	apiRouter.Get("/a", emptyHandler)
-	apiRouter.NotFoundHandler = mainRouter
-	if get(apiRouter, "http://api.example.com/a").Code != 200 {
-		t.Error("Router should match related host and path")
-	}
-	if get(apiRouter, "http://api.example.com/b").Code != 200 {
-		t.Error("Router should match related host and path")
-	}
-	if get(apiRouter, "/b").Code != 200 {
-		t.Error("Router should match related host and path")
-	}
-	if get(apiRouter, "/a").Code != 404 {
-		t.Error("Router should not match unrelated host and path")
-	}
 }
