@@ -34,8 +34,6 @@ func main() {
 	router := router.NewRouter()
 	router.Get("/", http.HandlerFunc(root))
 	router.Get("/entries/:id", http.HandlerFunc(entry))
-
-	http.Handle("/", router)
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe(":3000", router)
 }
 ```
