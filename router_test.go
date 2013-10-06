@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// Utility type for table-testing at TestRouteMatch
+// Utility type for table-testing at TestRoute
 type routeTestExample struct {
 	pattern string
 	path string
