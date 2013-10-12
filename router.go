@@ -76,6 +76,14 @@ func (router *Router) AppendRoute(method, pattern string, handler http.Handler) 
 	router.Routes[method] = append(router.Routes[method], NewRoute(pattern, handler))
 }
 
+var (
+	// Precompile Regexp to speed things up
+	anythingMatcher *regexp.Regexp = regexp.MustCompile("")
+
+	// Precompile Regexp to speed things up.
+	placeholderMatcher *regexp.Regexp = regexp.MustCompile(`:(\w+)`)
+)
+
 type Route struct {
 	Pattern *regexp.Regexp
 	Keys []string
@@ -86,9 +94,6 @@ func NewRoute(pattern string, handler http.Handler) *Route {
 	regexp, keys := compilePattern(pattern)
 	return &Route{regexp, keys, handler}
 }
-
-// Precompile Regexp to speed things up
-var anythingMatcher *regexp.Regexp = regexp.MustCompile("")
 
 func NewEmptyRoute(handler http.Handler) *Route {
 	return &Route{anythingMatcher, make([]string, 0), handler}
@@ -114,9 +119,6 @@ func (route *Route) extractParams(path string) url.Values {
 	}
 	return params
 }
-
-// Precompile Regexp to speed things up.
-var placeholderMatcher *regexp.Regexp = regexp.MustCompile(`:(\w+)`)
 
 // compilePattern("/hello/:world") => ^\/hello\/([^#?/]+)$, ["world"]
 func compilePattern(pattern string) (*regexp.Regexp, []string) {
