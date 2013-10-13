@@ -48,32 +48,32 @@ func (router *Router) MatchHost(host string) bool {
 	return router.host == "" || router.host == strings.Split(host, ":")[0]
 }
 
-func (router *Router) Get(pattern string, handler http.Handler) {
-	router.AppendRoute("GET", pattern, handler)
+func (router *Router) Get(pattern string, handlerOrFunc interface{}) {
+	router.AppendRoute("GET", pattern, handlerOrFunc)
 }
 
-func (router *Router) Post(pattern string, handler http.Handler) {
-	router.AppendRoute("POST", pattern, handler)
+func (router *Router) Post(pattern string, handlerOrFunc interface{}) {
+	router.AppendRoute("POST", pattern, handlerOrFunc)
 }
 
-func (router *Router) Put(pattern string, handler http.Handler) {
-	router.AppendRoute("PUT", pattern, handler)
+func (router *Router) Put(pattern string, handlerOrFunc interface{}) {
+	router.AppendRoute("PUT", pattern, handlerOrFunc)
 }
 
-func (router *Router) Delete(pattern string, handler http.Handler) {
-	router.AppendRoute("DELETE", pattern, handler)
+func (router *Router) Delete(pattern string, handlerOrFunc interface{}) {
+	router.AppendRoute("DELETE", pattern, handlerOrFunc)
 }
 
-func (router *Router) Any(pattern string, handler http.Handler) {
-	router.AppendRoute("ANY", pattern, handler)
+func (router *Router) Any(pattern string, handlerOrFunc interface{}) {
+	router.AppendRoute("ANY", pattern, handlerOrFunc)
 }
 
-func (router *Router) Handle(handler http.Handler) {
-	router.Routes["ANY"] = append(router.Routes["ANY"], NewEmptyRoute(handler))
+func (router *Router) Handle(handlerOrFunc interface{}) {
+	router.Routes["ANY"] = append(router.Routes["ANY"], NewEmptyRoute(handlerOrFunc))
 }
 
-func (router *Router) AppendRoute(method, pattern string, handler http.Handler) {
-	router.Routes[method] = append(router.Routes[method], NewRoute(pattern, handler))
+func (router *Router) AppendRoute(method, pattern string, handlerOrFunc interface{}) {
+	router.Routes[method] = append(router.Routes[method], NewRoute(pattern, handlerOrFunc))
 }
 
 var (
@@ -90,13 +90,13 @@ type Route struct {
 	Handler http.Handler
 }
 
-func NewRoute(pattern string, handler http.Handler) *Route {
+func NewRoute(pattern string, handlerOrFunc interface{}) *Route {
 	regexp, keys := compilePattern(pattern)
-	return &Route{regexp, keys, handler}
+	return &Route{regexp, keys, convertToHandler(handlerOrFunc)}
 }
 
-func NewEmptyRoute(handler http.Handler) *Route {
-	return &Route{anythingMatcher, make([]string, 0), handler}
+func NewEmptyRoute(handlerOrFunc interface{}) *Route {
+	return &Route{anythingMatcher, make([]string, 0), convertToHandler(handlerOrFunc)}
 }
 
 func (route *Route) Match(path string) bool {
@@ -132,4 +132,14 @@ func compilePattern(pattern string) (*regexp.Regexp, []string) {
 		}
 	}
 	return regexp.MustCompile(`^` + strings.Join(segments, `\/`) + "$"), keys
+}
+
+// Converts interface{} to http.Handler so that router can take Handler or HandlerFunc.
+func convertToHandler(handlerOrFunc interface{}) (handler http.Handler) {
+	if _, ok := handlerOrFunc.(http.Handler); ok {
+		handler = handlerOrFunc.(http.Handler)
+	} else {
+		handler = http.HandlerFunc(handlerOrFunc.(func(http.ResponseWriter, *http.Request)))
+	}
+	return
 }

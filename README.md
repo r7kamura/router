@@ -10,7 +10,7 @@ go get github.com/r7kamura/router
 router has a great regard for http.Handler interface.
 
 * router is a http.Handler
-* router.{Get,Post,Put,Delete} takes a http.Handler
+* router.{Get,Post,Put,Delete} takes a http.Handler or func(http.ResponseWriter, *http.Request)
 * router.{Get,Post,Put,Delete} takes a sinatra-like URL path pattern too
 
 ```go
@@ -32,8 +32,8 @@ func entry(writer http.ResponseWriter, request *http.Request) {
 
 func main() {
 	router := router.NewRouter()
-	router.Get("/", http.HandlerFunc(root))
-	router.Get("/entries/:id", http.HandlerFunc(entry))
+	router.Get("/", root)
+	router.Get("/entries/:id", entry)
 	http.ListenAndServe(":3000", router)
 }
 ```

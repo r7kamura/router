@@ -66,10 +66,9 @@ func request(router http.Handler, method, path string) *httptest.ResponseRecorde
 	return recorder
 }
 
-// Utility object as empty http.Handler
-var dummyHandler http.Handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+func dummyHandler(writer http.ResponseWriter, request *http.Request) {
 	fmt.Fprintf(writer, request.URL.Path + "?" + request.URL.RawQuery)
-})
+}
 
 func TestRouter(t *testing.T) {
 	Describe(t, "router.Router", func() {
